@@ -2,21 +2,32 @@ package com.example
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.LocalShipping
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -26,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.AppDatabase
+import com.example.data.LocationService
 import com.example.data.RestaurantRepository
 import com.example.ui.AppTab
 import com.example.ui.RestaurantViewModel
@@ -34,6 +46,8 @@ import com.example.ui.screens.FavoritesScreen
 import com.example.ui.screens.ListScreen
 import com.example.ui.screens.SwipeScreen
 import com.example.ui.theme.MyApplicationTheme
+import kotlinx.coroutines.launch
+import android.widget.Toast
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,6 +77,13 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainAppLayout(viewModel: RestaurantViewModel) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    
+    // Core Location Service and API Key Hooks
+    val locationService = remember { LocationService(context) }
+    // Fetch Google Places API Key from BuildConfig (injected via secrets plugin from .env file)
+    val apiKey = remember { BuildConfig.PLACES_API_KEY ?: "" }
     // Collect states reactively
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -73,6 +94,12 @@ fun MainAppLayout(viewModel: RestaurantViewModel) {
     val filteredFavorites by viewModel.filteredFavorites.collectAsStateWithLifecycle()
     val swipeDeckRestaurants by viewModel.swipeDeckRestaurants.collectAsStateWithLifecycle()
     val filteredRestaurants by viewModel.filteredRestaurants.collectAsStateWithLifecycle()
+    val isLoadingNearby by viewModel.isLoadingNearby.collectAsStateWithLifecycle()
+    val dataStatus by viewModel.dataStatus.collectAsStateWithLifecycle()
+    val apiStatus by viewModel.apiStatus.collectAsStateWithLifecycle()
+    val apiErrorMessage by viewModel.apiErrorMessage.collectAsStateWithLifecycle()
+    val forceDemo by viewModel.forceDemo.collectAsStateWithLifecycle()
+    val locationLabel by viewModel.locationLabel.collectAsStateWithLifecycle()
 
     var isFilterDialogOpen by remember { mutableStateOf(false) }
 
@@ -86,90 +113,229 @@ fun MainAppLayout(viewModel: RestaurantViewModel) {
         var count = 0
         if (filterRating > 0.0) count++
         if (filterPrices.isNotEmpty()) count++
-        if (filterDistance < 10.0) count++ // Assuming 10.0 is the upper limit/Any boundary
+        if (filterDistance < 10.0) count++
         count
     }
 
+    // Permission launcher to handle dynamic Location prompt
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        coroutineScope.launch {
+            if (granted) {
+                val loc = locationService.getCurrentLocation()
+                viewModel.fetchNearbyRestaurants(
+                    userLat = loc?.latitude ?: 21.0285,
+                    userLng = loc?.longitude ?: 105.8542,
+                    radiusInMeters = 8000,
+                    apiKey = apiKey
+                )
+            } else {
+                // If denied, fallback gracefully to mock local data using blank API Key
+                viewModel.fetchNearbyRestaurants(
+                    userLat = 21.0285,
+                    userLng = 105.8542,
+                    radiusInMeters = 8000,
+                    apiKey = ""
+                )
+            }
+        }
+    }
+
+    // Scan for location on start or when forceDemo changes
+    LaunchedEffect(forceDemo) {
+        val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (hasFine || hasCoarse) {
+            val loc = locationService.getCurrentLocation()
+            viewModel.fetchNearbyRestaurants(
+                userLat = loc?.latitude ?: 21.0285,
+                userLng = loc?.longitude ?: 105.8542,
+                radiusInMeters = 8000,
+                apiKey = apiKey
+            )
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "Restaurant Swiper",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        val subtitle = when (currentTab) {
-                            AppTab.SWIPE -> "Swipe right to Save"
-                            AppTab.EXPLORE -> "Search & Filter Spots"
-                            AppTab.FAVORITES -> "My Dining Scrapbook"
+            Column {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "Restaurant Swiper",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            val subtitle = when (currentTab) {
+                                AppTab.SWIPE -> "Swipe right to Save"
+                                AppTab.EXPLORE -> "Search & Filter Spots"
+                                AppTab.FAVORITES -> "My Dining Scrapbook"
+                            }
+                            Text(
+                                text = subtitle,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
-                        Text(
-                            text = subtitle,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                ),
-                modifier = Modifier.testTag("app_bar")
-            )
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                    ),
+                    modifier = Modifier.testTag("app_bar")
+                )
+                StatusAndLocationBanner(
+                    dataStatus = dataStatus,
+                    apiStatus = apiStatus,
+                    apiErrorMessage = apiErrorMessage,
+                    locationLabel = locationLabel,
+                    forceDemo = forceDemo,
+                    onToggleForceDemo = { viewModel.toggleForceDemo() }
+                )
+            }
         },
         bottomBar = {
-            NavigationBar(
+            Box(
                 modifier = Modifier
-                    .navigationBarsPadding() // Protect against double system bars / gesture pills overlap
                     .fillMaxWidth()
-                    .testTag("bottom_nav_bar")
+                    .navigationBarsPadding()
+                    .padding(bottom = 12.dp, start = 24.dp, end = 24.dp),
+                contentAlignment = Alignment.Center
             ) {
-                // Tab 1: Swipe Swiping Deck
-                NavigationBarItem(
-                    selected = currentTab == AppTab.SWIPE,
-                    onClick = { viewModel.setTab(AppTab.SWIPE) },
-                    icon = {
-                        Icon(
-                            imageVector = if (currentTab == AppTab.SWIPE) Icons.Filled.Restaurant else Icons.Outlined.Restaurant,
-                            contentDescription = "Swipe"
-                        )
-                    },
-                    label = { Text("Swipe") },
-                    modifier = Modifier.testTag("nav_tab_swipe")
-                )
+                Surface(
+                    modifier = Modifier
+                        .height(68.dp)
+                        .fillMaxWidth()
+                        .shadow(
+                            elevation = 16.dp,
+                            shape = RoundedCornerShape(36.dp),
+                            clip = false
+                        ),
+                    shape = RoundedCornerShape(36.dp),
+                    color = Color.White
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // 1. Home Tab (Swipe Screen)
+                        val isSwipe = currentTab == AppTab.SWIPE
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { viewModel.setTab(AppTab.SWIPE) }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .background(
+                                        color = if (isSwipe) Color(0xFFE2F9E5) else Color.Transparent,
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Home,
+                                    contentDescription = "Swipe",
+                                    tint = if (isSwipe) Color(0xFF0F3A20) else Color(0xFF5E6D63),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
 
-                // Tab 2: Directory Explore Grid
-                NavigationBarItem(
-                    selected = currentTab == AppTab.EXPLORE,
-                    onClick = { viewModel.setTab(AppTab.EXPLORE) },
-                    icon = {
-                        Icon(
-                            imageVector = if (currentTab == AppTab.EXPLORE) Icons.Filled.Explore else Icons.Outlined.Explore,
-                            contentDescription = "Explore"
-                        )
-                    },
-                    label = { Text("Explore") },
-                    modifier = Modifier.testTag("nav_tab_explore")
-                )
+                        // 2. Directory Tab (Explore Screen)
+                        val isExplore = currentTab == AppTab.EXPLORE
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { viewModel.setTab(AppTab.EXPLORE) }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .background(
+                                        color = if (isExplore) Color(0xFFE2F9E5) else Color.Transparent,
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.FormatListBulleted,
+                                    contentDescription = "Explore",
+                                    tint = if (isExplore) Color(0xFF0F3A20) else Color(0xFF5E6D63),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
 
-                // Tab 3: Favorites Scrapbook list
-                NavigationBarItem(
-                    selected = currentTab == AppTab.FAVORITES,
-                    onClick = { viewModel.setTab(AppTab.FAVORITES) },
-                    icon = {
-                        Icon(
-                            imageVector = if (currentTab == AppTab.FAVORITES) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                            contentDescription = "Scrapbook"
-                        )
-                    },
-                    label = { Text("Scrapbook") },
-                    modifier = Modifier.testTag("nav_tab_favorites")
-                )
+                        // 3. Scrapbook Tab (Favorites Screen)
+                        val isFavorites = currentTab == AppTab.FAVORITES
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { viewModel.setTab(AppTab.FAVORITES) }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .background(
+                                        color = if (isFavorites) Color(0xFFE2F9E5) else Color.Transparent,
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.FavoriteBorder,
+                                    contentDescription = "Scrapbook",
+                                    tint = if (isFavorites) Color(0xFF0F3A20) else Color(0xFF5E6D63),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+
+                    }
+                }
             }
         }
     ) { innerPadding ->
@@ -181,7 +347,6 @@ fun MainAppLayout(viewModel: RestaurantViewModel) {
         ) {
             when (currentTab) {
                 AppTab.SWIPE -> {
-                    // Double list wrapping ensures smooth, reactive key recompositions
                     val swipeWrapper = remember(swipeDeckRestaurants) { listOf(swipeDeckRestaurants) }
                     
                     SwipeScreen(
@@ -207,7 +372,6 @@ fun MainAppLayout(viewModel: RestaurantViewModel) {
                             if (isFav) {
                                 viewModel.removeFromFavorites(rest.id)
                             } else {
-                                // Add to favorites and save a SwipeAction log
                                 viewModel.swipeRight(rest)
                             }
                         },
@@ -222,7 +386,7 @@ fun MainAppLayout(viewModel: RestaurantViewModel) {
                 AppTab.FAVORITES -> {
                     FavoritesScreen(
                         favorites = filteredFavorites,
-                        allRestaurants = viewModel.repository.getLocalRestaurants(),
+                        allRestaurants = viewModel.nearbyRestaurants.value,
                         onRemoveFavorite = { id -> viewModel.removeFromFavorites(id) },
                         onSavePersonalReview = { id, notes, rating ->
                             viewModel.updatePersonalNotesAndRating(id, notes, rating)
@@ -247,6 +411,149 @@ fun MainAppLayout(viewModel: RestaurantViewModel) {
                     }
                 )
             }
+
+            // High-end Dark Theme Scanning overlay when fetching Places API
+            if (isLoadingNearby) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 4.dp,
+                            modifier = Modifier.size(56.dp)
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            text = "SCANNING NEARBY SPOTS...",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp
+                        )
+                    }
+                }
+            }
         }
     }
 }
+
+@Composable
+fun StatusAndLocationBanner(
+    dataStatus: String,
+    apiStatus: String?,
+    apiErrorMessage: String?,
+    locationLabel: String,
+    forceDemo: Boolean,
+    onToggleForceDemo: () -> Unit
+) {
+    val isBillingError = apiStatus == "REQUEST_DENIED" && apiErrorMessage?.contains("billing", ignoreCase = true) == true
+
+    val backgroundColor = when {
+        dataStatus == "ONLINE" -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+        isBillingError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+        dataStatus == "OFFLINE_FALLBACK" -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f)
+        else -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+    }
+
+    val textColor = when {
+        dataStatus == "ONLINE" -> MaterialTheme.colorScheme.primary
+        isBillingError -> MaterialTheme.colorScheme.error
+        dataStatus == "OFFLINE_FALLBACK" -> MaterialTheme.colorScheme.secondary
+        else -> MaterialTheme.colorScheme.error
+    }
+
+    val statusText = when {
+        dataStatus == "ONLINE" -> "Real-time Places Active"
+        isBillingError -> "Google Cloud Billing Disabled"
+        dataStatus == "OFFLINE_FALLBACK" -> "Demo Mode (Offline)"
+        else -> "Demo Fallback (API Error)"
+    }
+
+    val iconText = when {
+        dataStatus == "ONLINE" -> "🟢"
+        isBillingError -> "🔴"
+        dataStatus == "OFFLINE_FALLBACK" -> "🟡"
+        else -> "🟠"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(backgroundColor)
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = iconText, fontSize = 10.sp)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = statusText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Sleek pill-shaped Toggle Button
+                TextButton(
+                    onClick = onToggleForceDemo,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .height(24.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                        )
+                ) {
+                    Text(
+                        text = if (forceDemo) "Use Real GPS" else "Switch to Demo",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = locationLabel,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    textAlign = TextAlign.End
+                )
+            }
+        }
+        
+        // Show detailed user instructions if billing is disabled or key has errors
+        if (isBillingError) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Google Cloud Places API requires billing enabled. Please enable billing on your Google Cloud project to fetch real restaurants near your location.",
+                fontSize = 10.sp,
+                lineHeight = 13.sp,
+                fontWeight = FontWeight.Normal,
+                color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+            )
+        } else if (dataStatus == "OFFLINE_ERROR" && apiStatus != null) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Places API Error: $apiStatus${if (apiErrorMessage != null) " - $apiErrorMessage" else ""}",
+                fontSize = 10.sp,
+                lineHeight = 13.sp,
+                fontWeight = FontWeight.Normal,
+                color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+            )
+        }
+    }
+}
+

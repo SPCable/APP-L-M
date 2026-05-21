@@ -72,10 +72,36 @@ class RestaurantViewModel(val repository: RestaurantRepository) : ViewModel() {
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+    // Loading state for online Places API scan
+    private val _isLoadingNearby = MutableStateFlow(false)
+    val isLoadingNearby: StateFlow<Boolean> = _isLoadingNearby.asStateFlow()
 
-    // All local restaurants matching current search & filters
+    // Status of data fetching (ONLINE, OFFLINE_FALLBACK, OFFLINE_ERROR)
+    private val _dataStatus = MutableStateFlow("OFFLINE_FALLBACK")
+    val dataStatus: StateFlow<String> = _dataStatus.asStateFlow()
+
+    // Places API specific status and error message
+    private val _apiStatus = MutableStateFlow<String?>(null)
+    val apiStatus: StateFlow<String?> = _apiStatus.asStateFlow()
+
+    private val _apiErrorMessage = MutableStateFlow<String?>(null)
+    val apiErrorMessage: StateFlow<String?> = _apiErrorMessage.asStateFlow()
+
+    // Force Demo Mode state
+    private val _forceDemo = MutableStateFlow(false)
+    val forceDemo: StateFlow<Boolean> = _forceDemo.asStateFlow()
+
+    // Human-readable active location label
+    private val _locationLabel = MutableStateFlow("Default (Vietnam)")
+    val locationLabel: StateFlow<String> = _locationLabel.asStateFlow()
+
+    // Dynamic fetched list of restaurants (either local fallback or online Google Places)
+    private val _nearbyRestaurants = MutableStateFlow<List<Restaurant>>(repository.getLocalRestaurants())
+    val nearbyRestaurants: StateFlow<List<Restaurant>> = _nearbyRestaurants.asStateFlow()
+
+    // All matching restaurants reactively filtered
     val filteredRestaurants: StateFlow<List<Restaurant>> = combine(
-        flowOf(repository.getLocalRestaurants()),
+        nearbyRestaurants,
         _searchQuery,
         _filterRating,
         _filterPriceRanges,
@@ -118,7 +144,55 @@ class RestaurantViewModel(val repository: RestaurantRepository) : ViewModel() {
         initialValue = emptyList()
     )
 
+    // Action to fetch online Google Places data
+    fun fetchNearbyRestaurants(userLat: Double?, userLng: Double?, radiusInMeters: Int, apiKey: String) {
+        viewModelScope.launch {
+            _isLoadingNearby.value = true
+            
+            // Setup location label
+            if (userLat != null && userLng != null) {
+                if (userLat == 21.0285 && userLng == 105.8542) {
+                    _locationLabel.value = "Default (Vietnam)"
+                } else {
+                    _locationLabel.value = String.format("GPS: %.4f, %.4f", userLat, userLng)
+                }
+            } else {
+                _locationLabel.value = "No GPS (Default Location)"
+            }
+
+            android.util.Log.d("BiteSwipe", "fetchNearbyRestaurants called for location: ${_locationLabel.value}, forceDemo=${_forceDemo.value}")
+
+            // Dynamic online fetch
+            val results = if (_forceDemo.value) {
+                repository.getLocalRestaurants()
+            } else {
+                repository.getNearbyRestaurants(userLat, userLng, radiusInMeters, apiKey)
+            }
+            _nearbyRestaurants.value = results
+            
+            _apiStatus.value = if (_forceDemo.value) null else repository.lastApiStatus
+            _apiErrorMessage.value = if (_forceDemo.value) null else repository.lastApiErrorMessage
+
+            // Setup status
+            if (_forceDemo.value || apiKey.isBlank() || apiKey == "PLACEHOLDER") {
+                _dataStatus.value = "OFFLINE_FALLBACK"
+            } else if (results == com.example.data.RestaurantData.localRestaurants) {
+                _dataStatus.value = "OFFLINE_ERROR"
+            } else {
+                _dataStatus.value = "ONLINE"
+            }
+
+            android.util.Log.d("BiteSwipe", "fetchNearbyRestaurants completed. Loaded: ${results.size} restaurants, Status: ${_dataStatus.value}")
+            _isLoadingNearby.value = false
+        }
+    }
+
+    fun toggleForceDemo() {
+        _forceDemo.value = !_forceDemo.value
+    }
+
     // Actions
+
     fun setTab(tab: AppTab) {
         _currentTab.value = tab
     }

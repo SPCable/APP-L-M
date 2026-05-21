@@ -47,14 +47,14 @@ fun RestaurantSwipeCard(
 ) {
     val coroutineScope = rememberCoroutineScope()
     
-    // Physical state trackers for dragging
-    val offsetX = remember { Animatable(0f) }
-    val offsetY = remember { Animatable(0f) }
+    // Physical state trackers for dragging - key on restaurant.id to reset states when a new restaurant is shown!
+    val offsetX = remember(restaurant.id) { Animatable(0f) }
+    val offsetY = remember(restaurant.id) { Animatable(0f) }
 
     // Direct memory state variables for gesture tracking (bypasses any main thread congestion)
-    var isDragging by remember { mutableStateOf(false) }
-    var dragX by remember { mutableStateOf(0f) }
-    var dragY by remember { mutableStateOf(0f) }
+    var isDragging by remember(restaurant.id) { mutableStateOf(false) }
+    var dragX by remember(restaurant.id) { mutableStateOf(0f) }
+    var dragY by remember(restaurant.id) { mutableStateOf(0f) }
 
     // Screen info to compute escape speed and swipe limits
     val configuration = LocalConfiguration.current

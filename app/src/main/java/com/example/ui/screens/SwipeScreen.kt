@@ -148,36 +148,38 @@ fun SwipeScreen(
                     // Index from top (0 is top card, 1 is under it, etc.)
                     val indexFromTop = (cards.size - 1) - revIndex
 
-                    if (indexFromTop == 0) {
-                        // The interactive active top card
-                        RestaurantSwipeCard(
-                            restaurant = restaurant,
-                            onSwipeLeft = { onSwipeLeft(restaurant) },
-                            onSwipeRight = { onSwipeRight(restaurant) },
-                            onDetailClick = { selectedRestaurantForDetail = restaurant },
-                            modifier = Modifier
-                                .fillMaxWidth(0.92f)
-                                .fillMaxHeight(0.85f)
-                                .testTag("restaurant_swipe_card_${restaurant.id}")
-                        )
-                    } else {
-                        // Background placeholder cards (slightly shrunk and translated downward)
-                        val translationYOffset = (indexFromTop * 14).dp
-                        val scaleFactor = 1f - (indexFromTop * 0.04f)
+                    key(restaurant.id) {
+                        if (indexFromTop == 0) {
+                            // The interactive active top card
+                            RestaurantSwipeCard(
+                                restaurant = restaurant,
+                                onSwipeLeft = { onSwipeLeft(restaurant) },
+                                onSwipeRight = { onSwipeRight(restaurant) },
+                                onDetailClick = { selectedRestaurantForDetail = restaurant },
+                                modifier = Modifier
+                                    .fillMaxWidth(0.92f)
+                                    .fillMaxHeight(0.85f)
+                                    .testTag("restaurant_swipe_card_${restaurant.id}")
+                            )
+                        } else {
+                            // Background placeholder cards (slightly shrunk and translated downward)
+                            val translationYOffset = (indexFromTop * 14).dp
+                            val scaleFactor = 1f - (indexFromTop * 0.04f)
 
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth(0.92f)
-                                .fillMaxHeight(0.85f)
-                                .offset(y = translationYOffset)
-                                .scale(scaleFactor)
-                                .align(Alignment.Center),
-                            shape = RoundedCornerShape(24.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = (4 - indexFromTop).dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                        ) {
-                            // Empty box just to provide stacking aesthetics while sleeping
-                            Box(modifier = Modifier.fillMaxSize())
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.92f)
+                                    .fillMaxHeight(0.85f)
+                                    .offset(y = translationYOffset)
+                                    .scale(scaleFactor)
+                                    .align(Alignment.Center),
+                                shape = RoundedCornerShape(24.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = (4 - indexFromTop).dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                // Empty box just to provide stacking aesthetics while sleeping
+                                Box(modifier = Modifier.fillMaxSize())
+                            }
                         }
                     }
                 }
