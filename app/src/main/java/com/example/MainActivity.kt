@@ -25,6 +25,8 @@ import androidx.compose.material.icons.outlined.LocalShipping
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -48,6 +50,11 @@ import com.example.ui.screens.SwipeScreen
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.launch
 import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,11 +63,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val context = LocalContext.current
-            
+
             // Core database, DAO and repository hooks
             val database = remember { AppDatabase.getDatabase(context) }
             val repository = remember { RestaurantRepository(database.restaurantDao()) }
-            
+
             // Jetpack ViewModel initialization via custom Factory
             val viewModelFactory = remember { RestaurantViewModel.Factory(repository) }
             val viewModel: RestaurantViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
@@ -79,7 +86,7 @@ class MainActivity : ComponentActivity() {
 fun MainAppLayout(viewModel: RestaurantViewModel) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    
+
     // Core Location Service and API Key Hooks
     val locationService = remember { LocationService(context) }
     // Fetch Google Places API Key from BuildConfig (injected via secrets plugin from .env file)
@@ -214,130 +221,7 @@ fun MainAppLayout(viewModel: RestaurantViewModel) {
                 )
             }
         },
-        bottomBar = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(bottom = 12.dp, start = 24.dp, end = 24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Surface(
-                    modifier = Modifier
-                        .height(68.dp)
-                        .fillMaxWidth()
-                        .shadow(
-                            elevation = 16.dp,
-                            shape = RoundedCornerShape(36.dp),
-                            clip = false
-                        ),
-                    shape = RoundedCornerShape(36.dp),
-                    color = Color.White
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        // 1. Home Tab (Swipe Screen)
-                        val isSwipe = currentTab == AppTab.SWIPE
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = { viewModel.setTab(AppTab.SWIPE) }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .background(
-                                        color = if (isSwipe) Color(0xFFE2F9E5) else Color.Transparent,
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Home,
-                                    contentDescription = "Swipe",
-                                    tint = if (isSwipe) Color(0xFF0F3A20) else Color(0xFF5E6D63),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-
-                        // 2. Directory Tab (Explore Screen)
-                        val isExplore = currentTab == AppTab.EXPLORE
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = { viewModel.setTab(AppTab.EXPLORE) }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .background(
-                                        color = if (isExplore) Color(0xFFE2F9E5) else Color.Transparent,
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.FormatListBulleted,
-                                    contentDescription = "Explore",
-                                    tint = if (isExplore) Color(0xFF0F3A20) else Color(0xFF5E6D63),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-
-                        // 3. Scrapbook Tab (Favorites Screen)
-                        val isFavorites = currentTab == AppTab.FAVORITES
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = { viewModel.setTab(AppTab.FAVORITES) }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .background(
-                                        color = if (isFavorites) Color(0xFFE2F9E5) else Color.Transparent,
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.FavoriteBorder,
-                                    contentDescription = "Scrapbook",
-                                    tint = if (isFavorites) Color(0xFF0F3A20) else Color(0xFF5E6D63),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-
-                    }
-                }
-            }
-        }
+        bottomBar = { BottomBar(viewModel = viewModel, currentTab = currentTab) }
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -347,8 +231,9 @@ fun MainAppLayout(viewModel: RestaurantViewModel) {
         ) {
             when (currentTab) {
                 AppTab.SWIPE -> {
-                    val swipeWrapper = remember(swipeDeckRestaurants) { listOf(swipeDeckRestaurants) }
-                    
+                    val swipeWrapper =
+                        remember(swipeDeckRestaurants) { listOf(swipeDeckRestaurants) }
+
                     SwipeScreen(
                         swipeDeck = swipeWrapper,
                         deckRestaurants = swipeDeckRestaurants,
@@ -453,7 +338,10 @@ fun StatusAndLocationBanner(
     forceDemo: Boolean,
     onToggleForceDemo: () -> Unit
 ) {
-    val isBillingError = apiStatus == "REQUEST_DENIED" && apiErrorMessage?.contains("billing", ignoreCase = true) == true
+    val isBillingError = apiStatus == "REQUEST_DENIED" && apiErrorMessage?.contains(
+        "billing",
+        ignoreCase = true
+    ) == true
 
     val backgroundColor = when {
         dataStatus == "ONLINE" -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
@@ -533,7 +421,7 @@ fun StatusAndLocationBanner(
                 )
             }
         }
-        
+
         // Show detailed user instructions if billing is disabled or key has errors
         if (isBillingError) {
             Spacer(modifier = Modifier.height(4.dp))
@@ -556,4 +444,138 @@ fun StatusAndLocationBanner(
         }
     }
 }
+@Composable
+fun BottomBar(viewModel: RestaurantViewModel, currentTab: AppTab) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(bottom = 12.dp, start = 24.dp, end = 24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .height(68.dp)
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 16.dp,
+                    shape = RoundedCornerShape(36.dp),
+                    clip = false
+                ),
+            shape = RoundedCornerShape(36.dp),
+            color = Color.White
+        ) {
+            BoxWithConstraints(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                val tabWidth = maxWidth / 3
+                val targetOffset = when (currentTab) {
+                    AppTab.SWIPE -> 0.dp
+                    AppTab.EXPLORE -> tabWidth
+                    AppTab.FAVORITES -> tabWidth * 2
+                }
 
+                val animatedOffset by animateDpAsState(
+                    targetValue = targetOffset,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    ),
+                    label = "indicatorOffset"
+                )
+
+                // 1. Sliding Green Circle Indicator
+                Box(
+                    modifier = Modifier
+                        .offset(x = animatedOffset)
+                        .width(tabWidth)
+                        .fillMaxHeight(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .background(Color(0xFFE2F9E5), CircleShape)
+                    )
+                }
+
+                // 2. Interactive Tab Row on top
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Tab 1: Home/Swipe
+                    val isSwipe = currentTab == AppTab.SWIPE
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { viewModel.setTab(AppTab.SWIPE) }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Home,
+                            contentDescription = "Swipe",
+                            tint = if (isSwipe) Color(0xFF0F3A20) else Color(0xFF5E6D63),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    // Tab 2: Directory/Explore
+                    val isExplore = currentTab == AppTab.EXPLORE
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { viewModel.setTab(AppTab.EXPLORE) }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.FormatListBulleted,
+                            contentDescription = "Explore",
+                            tint = if (isExplore) Color(0xFF0F3A20) else Color(0xFF5E6D63),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    // Tab 3: Scrapbook/Favorites
+                    val isFavorites = currentTab == AppTab.FAVORITES
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { viewModel.setTab(AppTab.FAVORITES) }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.FavoriteBorder,
+                            contentDescription = "Scrapbook",
+                            tint = if (isFavorites) Color(0xFF0F3A20) else Color(0xFF5E6D63),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Preview
+@Composable
+fun BottomBarPreview() {
+    val viewModel = RestaurantViewModel(RestaurantRepository(AppDatabase.getDatabase(LocalContext.current).restaurantDao()))
+    val currentTab = AppTab.SWIPE
+    BottomBar(viewModel = viewModel, currentTab = currentTab)
+}

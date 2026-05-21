@@ -9,40 +9,40 @@ import retrofit2.http.Query
 
 @JsonClass(generateAdapter = true)
 data class PlacesResponse(
-    @Json(name = "results") val results: List<PlaceResult>,
-    @Json(name = "status") val status: String,
-    @Json(name = "error_message") val errorMessage: String? = null
+    @field:Json(name = "results") val results: List<PlaceResult>,
+    @field:Json(name = "status") val status: String,
+    @field:Json(name = "error_message") val errorMessage: String? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class PlaceResult(
-    @Json(name = "place_id") val placeId: String,
-    @Json(name = "name") val name: String,
-    @Json(name = "rating") val rating: Double?,
-    @Json(name = "user_ratings_total") val userRatingsTotal: Int?,
-    @Json(name = "price_level") val priceLevel: Int?,
-    @Json(name = "vicinity") val vicinity: String?,
-    @Json(name = "photos") val photos: List<PlacePhoto>?,
-    @Json(name = "geometry") val geometry: PlaceGeometry?,
-    @Json(name = "types") val types: List<String>?
+    @field:Json(name = "place_id") val placeId: String,
+    @field:Json(name = "name") val name: String,
+    @field:Json(name = "rating") val rating: Double?,
+    @field:Json(name = "user_ratings_total") val userRatingsTotal: Int?,
+    @field:Json(name = "price_level") val priceLevel: Int?,
+    @field:Json(name = "vicinity") val vicinity: String?,
+    @field:Json(name = "photos") val photos: List<PlacePhoto>?,
+    @field:Json(name = "geometry") val geometry: PlaceGeometry?,
+    @field:Json(name = "types") val types: List<String>?
 )
 
 @JsonClass(generateAdapter = true)
 data class PlacePhoto(
-    @Json(name = "photo_reference") val photoReference: String,
-    @Json(name = "height") val height: Int,
-    @Json(name = "width") val width: Int
+    @field:Json(name = "photo_reference") val photoReference: String,
+    @field:Json(name = "height") val height: Int,
+    @field:Json(name = "width") val width: Int
 )
 
 @JsonClass(generateAdapter = true)
 data class PlaceGeometry(
-    @Json(name = "location") val location: PlaceLocation
+    @field:Json(name = "location") val location: PlaceLocation
 )
 
 @JsonClass(generateAdapter = true)
 data class PlaceLocation(
-    @Json(name = "lat") val lat: Double,
-    @Json(name = "lng") val lng: Double
+    @field:Json(name = "lat") val lat: Double,
+    @field:Json(name = "lng") val lng: Double
 )
 
 interface PlacesApiService {
