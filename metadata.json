@@ -1,0 +1,6 @@
+{
+  "name": "Restaurant Swiper",
+  "description": "Swipe right to save favorite restaurants in your area, search by cuisine, and filter by rating, price, and distance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
