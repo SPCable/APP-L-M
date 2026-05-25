@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -352,7 +353,6 @@ fun RestaurantSwipeCard(
         }
     }
 }
-
 @Composable
 fun TinderActionBar(
     onDislike: () -> Unit,
@@ -362,8 +362,7 @@ fun TinderActionBar(
 ) {
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp),
+            .fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -433,4 +432,10 @@ fun TinderActionBar(
             }
         }
     }
+}
+
+@Preview
+@Composable
+fun TinderActionBarPreview() {
+    TinderActionBar(onDislike = {}, onReset = {}, onLike = {})
 }

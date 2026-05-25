@@ -8,6 +8,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -55,6 +58,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
+import com.example.ui.AuthViewModel
+import com.example.ui.screens.LoginScreen
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import android.util.Log
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,8 +83,69 @@ class MainActivity : ComponentActivity() {
                 factory = viewModelFactory
             )
 
+            // Auth ViewModel for session management
+            val authViewModel: AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+            authViewModel.initialize(context)
+
+            val currentUser by authViewModel.currentUser.collectAsStateWithLifecycle()
+            val isDemoUser by authViewModel.isDemoUser.collectAsStateWithLifecycle()
+            val isAuthLoading by authViewModel.isLoading.collectAsStateWithLifecycle()
+            val authErrorMessage by authViewModel.errorMessage.collectAsStateWithLifecycle()
+
+            // Initialize Google Sign-In safely to support systems with or without real google-services.json
+            val clientIdResId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+            val webClientId = if (clientIdResId != 0) context.getString(clientIdResId) else "602287814407-dummyclientid12345.apps.googleusercontent.com"
+            val gso = remember(webClientId) {
+                GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                    .requestIdToken(webClientId)
+                    .requestEmail()
+                    .build()
+            }
+            val googleSignInClient = remember(context, gso) {
+                GoogleSignIn.getClient(context, gso)
+            }
+
+            val googleSignInLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                try {
+                    val account = task.getResult(ApiException::class.java)
+                    val idToken = account.idToken
+                    if (idToken != null) {
+                        authViewModel.signInWithGoogle(idToken) {
+                            Toast.makeText(context, "Chào mừng đăng nhập!", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        authViewModel.enterDemoMode {
+                            Toast.makeText(context, "Đăng nhập nhanh Demo!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Google sign in failed, entering Demo: ${e.message}")
+                    authViewModel.enterDemoMode {
+                        Toast.makeText(context, "Đăng nhập nhanh Demo!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
             MyApplicationTheme {
-                MainAppLayout(viewModel = viewModel)
+                if (currentUser == null && !isDemoUser) {
+                    LoginScreen(
+                        isLoading = isAuthLoading,
+                        errorMessage = authErrorMessage,
+                        onGoogleSignInClick = {
+                            googleSignInLauncher.launch(googleSignInClient.signInIntent)
+                        },
+                        onDemoSignInClick = {
+                            authViewModel.enterDemoMode {
+                                Toast.makeText(context, "Chào mừng bạn đến với LỤM!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    )
+                } else {
+                    MainAppLayout(viewModel = viewModel, authViewModel = authViewModel)
+                }
             }
         }
     }
@@ -83,9 +153,21 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainAppLayout(viewModel: RestaurantViewModel) {
+fun MainAppLayout(viewModel: RestaurantViewModel, authViewModel: AuthViewModel) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    // Collect user session information
+    val currentUser by authViewModel.currentUser.collectAsStateWithLifecycle()
+    val isDemoUser by authViewModel.isDemoUser.collectAsStateWithLifecycle()
+    val demoUserEmail by authViewModel.demoUserEmail.collectAsStateWithLifecycle()
+    val demoUserName by authViewModel.demoUserName.collectAsStateWithLifecycle()
+
+    val userName = currentUser?.displayName ?: demoUserName ?: "LỤM User"
+    val userEmail = currentUser?.email ?: demoUserEmail ?: "user@lum.vn"
+    val userPhotoUrl = currentUser?.photoUrl?.toString()
+
+    var isProfileMenuExpanded by remember { mutableStateOf(false) }
 
     // Core Location Service and API Key Hooks
     val locationService = remember { LocationService(context) }
@@ -209,6 +291,67 @@ fun MainAppLayout(viewModel: RestaurantViewModel) {
                         containerColor = MaterialTheme.colorScheme.background,
                         titleContentColor = MaterialTheme.colorScheme.onBackground
                     ),
+                    actions = {
+                        Box(modifier = Modifier.padding(end = 16.dp)) {
+                            if (userPhotoUrl != null) {
+                                coil.compose.AsyncImage(
+                                    model = userPhotoUrl,
+                                    contentDescription = "Profile Picture",
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .border(if (isDemoUser) BorderStroke(1.5.dp, Color(0xFF4CAF50)) else BorderStroke(0.dp, Color.Transparent), CircleShape)
+                                        .clickable { isProfileMenuExpanded = true }
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                                        .border(BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)), CircleShape)
+                                        .clickable { isProfileMenuExpanded = true },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = userName.take(1).uppercase(),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = isProfileMenuExpanded,
+                                onDismissRequest = { isProfileMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(text = userName, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                text = userEmail,
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                    },
+                                    onClick = {},
+                                    enabled = false
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Đăng xuất", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) },
+                                    onClick = {
+                                        isProfileMenuExpanded = false
+                                        authViewModel.signOut {
+                                            Toast.makeText(context, "Đã đăng xuất!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    },
                     modifier = Modifier.testTag("app_bar")
                 )
                 StatusAndLocationBanner(
@@ -463,7 +606,7 @@ fun BottomBar(viewModel: RestaurantViewModel, currentTab: AppTab) {
                     clip = false
                 ),
             shape = RoundedCornerShape(36.dp),
-            color = Color.White
+            color = MaterialTheme.colorScheme.surface
         ) {
             BoxWithConstraints(
                 modifier = Modifier.fillMaxSize()

@@ -20,12 +20,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.Restaurant
+import com.example.data.RestaurantData
 import com.example.ui.components.DetailDialog
 import com.example.ui.components.RestaurantSwipeCard
 import com.example.ui.components.TinderActionBar
+import com.example.ui.theme.MyApplicationTheme
 
 @Composable
 fun SwipeScreen(
@@ -48,7 +51,7 @@ fun SwipeScreen(
     ) {
         // App slogan / Subtitle
         Text(
-            text = "DISCOVER NEARBY SPOTS",
+            text = "LỤM",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
@@ -210,5 +213,38 @@ fun SwipeScreen(
                 }
             )
         }
+    }
+}
+
+@Preview(showBackground = true, name = "Swipe Screen - Active")
+@Composable
+fun SwipeScreenActivePreview() {
+    val sampleRestaurants = RestaurantData.localRestaurants
+    MyApplicationTheme {
+        SwipeScreen(
+            swipeDeck = listOf(sampleRestaurants),
+            deckRestaurants = sampleRestaurants,
+            onSwipeLeft = {},
+            onSwipeRight = {},
+            onResetDeck = {},
+            favoriteMap = emptyMap(),
+            onSavePersonalReview = { _, _, _ -> }
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Swipe Screen - Empty")
+@Composable
+fun SwipeScreenEmptyPreview() {
+    MyApplicationTheme {
+        SwipeScreen(
+            swipeDeck = emptyList(),
+            deckRestaurants = emptyList(),
+            onSwipeLeft = {},
+            onSwipeRight = {},
+            onResetDeck = {},
+            favoriteMap = emptyMap(),
+            onSavePersonalReview = { _, _, _ -> }
+        )
     }
 }

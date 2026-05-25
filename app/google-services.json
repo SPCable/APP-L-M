@@ -1,0 +1,34 @@
+{
+  "project_info": {
+    "project_number": "602287814407",
+    "project_id": "biteswipe-lum",
+    "storage_bucket": "biteswipe-lum.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:602287814407:android:b4923e1ca08a8d1df1decf",
+        "android_client_info": {
+          "package_name": "com.aistudio.biteswipe.fymslt"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "602287814407-dummyclientid12345.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_mockKeyForAppCompilationOnly12345"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "status": 1
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
